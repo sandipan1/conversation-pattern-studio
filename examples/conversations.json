@@ -1,0 +1,8 @@
+[
+  {"chat_id":"c-101","messages":[{"role":"user","content":"I cannot sign in after resetting my password."},{"role":"assistant","content":"Check the reset link and try another browser."}],"metadata":{"channel":"support"}},
+  {"chat_id":"c-102","messages":[{"role":"user","content":"Where can I download my invoices?"},{"role":"assistant","content":"Open billing in account settings."}],"metadata":{"channel":"support"}},
+  {"chat_id":"c-103","messages":[{"role":"user","content":"How do I invite my team?"},{"role":"assistant","content":"Use the Members page to send invitations."}],"metadata":{"channel":"web"}},
+  {"chat_id":"c-104","messages":[{"role":"user","content":"The password reset email never arrived."},{"role":"assistant","content":"Check spam and verify your email address."}],"metadata":{"channel":"support"}},
+  {"chat_id":"c-105","messages":[{"role":"user","content":"Can I export my account data?"},{"role":"assistant","content":"You can request an export in settings."}],"metadata":{"channel":"web"}},
+  {"chat_id":"c-106","messages":[{"role":"user","content":"How can admins change member roles?"},{"role":"assistant","content":"Admins can update roles under Members."}],"metadata":{"channel":"support"}}
+]

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#172436" />
+  <title>Conversation Pattern Studio</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">CP</span><div><strong>Conversation<br>Pattern Studio</strong><small>Research workspace</small></div></div>
+      <div class="workspace-label">WORKSPACE</div>
+      <nav class="nav" aria-label="Main navigation">
+        <button class="nav-item active" data-view="overview"><span class="nav-icon">◫</span> Overview</button>
+        <button class="nav-item" data-view="patterns"><span class="nav-icon">▤</span> Patterns</button>
+        <button class="nav-item" data-view="map"><span class="nav-icon">◇</span> Map</button>
+        <button class="nav-item" data-view="conversations"><span class="nav-icon">≡</span> Conversations</button>
+      </nav>
+      <div class="sidebar-bottom"><div class="sidebar-note"><span class="live-dot"></span><span id="dataset-label">No dataset loaded</span></div><button id="import-sidebar" class="sidebar-import">＋ Import data</button></div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div class="breadcrumbs">WORKSPACE <span>/</span> <b id="view-name">Overview</b></div><div class="top-actions"><span id="record-count">0 conversations</span><button class="button button-dark" id="import-top">Import data <span>↗</span></button></div></header>
+      <div id="app-content" class="content"></div>
+    </main>
+  </div>
+  <dialog id="import-dialog" class="modal"><form method="dialog" class="modal-head"><div><small>DATA SOURCE</small><h2>Bring in an analysis</h2></div><button class="icon-button" aria-label="Close">×</button></form><p>Drop in a bundle JSON file, or select the checkpoint JSONL files created by the CLI. Files stay in this browser session.</p><label class="dropzone" id="dropzone"><span class="drop-icon">⇧</span><strong>Choose files or drop them here</strong><small>analysis.json, conversations.jsonl, summaries.jsonl, clusters.jsonl, meta_clusters.jsonl, dimensionality.jsonl</small><input id="file-input" type="file" multiple accept=".json,.jsonl" hidden /></label><div class="modal-footer"><button class="button button-quiet" id="sample-button">Try preview data</button><span id="import-status"></span></div></dialog>
+  <dialog id="detail-dialog" class="modal detail-modal"><form method="dialog" class="modal-head"><div><small id="detail-kicker">PATTERN</small><h2 id="detail-title"></h2></div><button class="icon-button" aria-label="Close">×</button></form><div id="detail-body"></div></dialog>
+  <script src="/app.js" defer></script>
+</body>
+</html>
