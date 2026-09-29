@@ -12,15 +12,16 @@ uv run pattern-studio run examples/conversations.json --offline
 uv run pattern-studio serve
 ```
 
-Open `http://127.0.0.1:8000`. The offline run is a quick preview using simple local labels and lexical embeddings. For semantic analysis, set `OPENAI_API_KEY` and run without `--offline`:
+Open `http://127.0.0.1:8000`. The offline run is a quick preview using simple local labels and lexical embeddings. For semantic analysis, put your key in a local `.env` file and run without `--offline`:
 
 ```bash
-export OPENAI_API_KEY=your-key
+cp .env.example .env
+# Edit .env and set OPENAI_API_KEY to your key.
 uv run pattern-studio run your-conversations.json --output checkpoints
 uv run pattern-studio serve --dir checkpoints
 ```
 
-The chat and embedding models use OpenAI by default. `OPENAI_BASE_URL` can point to a compatible API. Analysis sends conversation content to the configured model provider. Review your data handling requirements before using a hosted provider.
+The project loads `.env` from the current directory without overriding existing environment variables. It uses `gpt-6-luna` for chat analysis and `text-embedding-3-small` for embeddings by default. Use `--model` to choose another chat model; `OPENAI_BASE_URL` can point to a compatible API. Analysis sends conversation content to the configured model provider. Review your data handling requirements before using a hosted provider.
 
 ## Input
 
@@ -79,5 +80,3 @@ uv sync --extra dev
 uv run pytest
 uv run ruff check .
 ```
-
-The project is intended for local use and does not include a package publishing workflow.

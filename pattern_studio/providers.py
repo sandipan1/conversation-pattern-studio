@@ -9,7 +9,14 @@ import os
 from pathlib import Path
 from typing import Protocol
 
+from dotenv import load_dotenv
+
 from .models import Conversation, LabelPayload, SummaryPayload
+
+
+def load_environment() -> None:
+    """Read a local .env without replacing values already set by the caller."""
+    load_dotenv(dotenv_path=Path.cwd() / ".env", override=False)
 
 
 class TextModel(Protocol):
@@ -44,11 +51,15 @@ class FileCache:
 class OpenAITextModel:
     """Structured text generation via OpenAI or an OpenAI-compatible endpoint."""
 
-    def __init__(self, model: str = "gpt-4o-mini", *, api_key: str | None = None, base_url: str | None = None, cache: FileCache | None = None, summary_instruction: str | None = None, label_instruction: str | None = None, summary_schema: type[SummaryPayload] = SummaryPayload):
+    def __init__(self, model: str = "gpt-6-luna", *, api_key: str | None = None, base_url: str | None = None, cache: FileCache | None = None, summary_instruction: str | None = None, label_instruction: str | None = None, summary_schema: type[SummaryPayload] = SummaryPayload):
         from openai import AsyncOpenAI
 
+        load_environment()
+        resolved_key = api_key or os.getenv("OPENAI_API_KEY")
+        if not resolved_key:
+            raise ValueError("OPENAI_API_KEY is required for OpenAI text analysis")
         self.model = model
-        self.client = AsyncOpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY") or ("local" if base_url or os.getenv("OPENAI_BASE_URL") else None), base_url=base_url or os.getenv("OPENAI_BASE_URL"))
+        self.client = AsyncOpenAI(api_key=resolved_key, base_url=base_url or os.getenv("OPENAI_BASE_URL"))
         self.cache = cache
         self.summary_instruction = summary_instruction
         self.label_instruction = label_instruction
@@ -64,11 +75,12 @@ class OpenAITextModel:
             except ValueError:
                 pass
         for attempt in range(3):
+            options = {"reasoning_effort": "low"} if self.model.startswith("gpt-6-") else {"temperature": 0.2}
             response = await self.client.chat.completions.create(
                 model=self.model,
-                temperature=0.2,
                 response_format={"type": "json_object"},
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+                **options,
             )
             content = response.choices[0].message.content
             try:
@@ -114,8 +126,12 @@ class OpenAIEmbedder:
     def __init__(self, model: str = "text-embedding-3-small", *, api_key: str | None = None, base_url: str | None = None):
         from openai import AsyncOpenAI
 
+        load_environment()
+        resolved_key = api_key or os.getenv("OPENAI_API_KEY")
+        if not resolved_key:
+            raise ValueError("OPENAI_API_KEY is required for OpenAI embeddings")
         self.model = model
-        self.client = AsyncOpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY") or ("local" if base_url or os.getenv("OPENAI_BASE_URL") else None), base_url=base_url or os.getenv("OPENAI_BASE_URL"))
+        self.client = AsyncOpenAI(api_key=resolved_key, base_url=base_url or os.getenv("OPENAI_BASE_URL"))
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:

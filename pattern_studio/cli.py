@@ -19,6 +19,7 @@ from .providers import (
     OpenAIEmbedder,
     OpenAITextModel,
     RuleBasedTextModel,
+    load_environment,
 )
 from .storage import HuggingFaceStore, JSONLStore, ParquetStore, SQLiteStore, SQLStore
 from .webapp import create_app
@@ -33,7 +34,7 @@ def run(
     input_format: Annotated[str, typer.Option(help="standard or claude")] = "standard",
     checkpoint_format: Annotated[str, typer.Option(help="jsonl, sqlite, sql, parquet, or huggingface")] = "jsonl",
     database_url: Annotated[str | None, typer.Option(help="SQLAlchemy URL when using --checkpoint-format sql")] = None,
-    model: Annotated[str, typer.Option(help="OpenAI-compatible chat model")] = "gpt-4o-mini",
+    model: Annotated[str, typer.Option(help="OpenAI-compatible chat model")] = "gpt-6-luna",
     embedding_model: Annotated[str, typer.Option(help="Embedding model for API or local option")] = "text-embedding-3-small",
     embeddings: Annotated[str, typer.Option(help="openai, cohere, local, or hashing")] = "openai",
     offline: Annotated[bool, typer.Option(help="Use simple local labels for a no-key preview")] = False,
@@ -43,10 +44,11 @@ def run(
     resume: Annotated[bool, typer.Option(help="Resume compatible checkpoints")] = True,
 ) -> None:
     """Analyze conversations and save every stage for the dashboard."""
+    load_environment()
     if input_format not in {"standard", "claude"}:
         raise typer.BadParameter("input-format must be standard or claude")
-    if not offline and not os.getenv("OPENAI_API_KEY") and not os.getenv("OPENAI_BASE_URL"):
-        raise typer.BadParameter("Set OPENAI_API_KEY or use --offline for a preview")
+    if not offline and not os.getenv("OPENAI_API_KEY"):
+        raise typer.BadParameter("Set OPENAI_API_KEY in .env or the environment, or use --offline for a preview")
     conversations = Conversation.from_claude_export(input_file) if input_format == "claude" else Conversation.from_file(input_file)
     stores = {
         "jsonl": lambda: JSONLStore(output),
