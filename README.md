@@ -8,11 +8,11 @@ Requirements: Python 3.10+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
-uv run pattern-studio run examples/conversations.json --offline
+uv run pattern-studio run examples/hierarchy-conversations.jsonl --offline --clusters 24 --max-depth 2
 uv run pattern-studio serve
 ```
 
-Open `http://127.0.0.1:8000`. The offline run is a quick preview using simple local labels and lexical embeddings. For semantic analysis, put your key in a local `.env` file and run without `--offline`:
+Open `http://127.0.0.1:8000` and choose **Hierarchy**. The example has 120 synthetic conversations across 24 request types, enough to show several levels. The offline run uses simple local labels and lexical embeddings, so its discovered groups may differ from the illustrative demo. For semantic analysis, put your key in a local `.env` file and run without `--offline`:
 
 ```bash
 cp .env.example .env
@@ -35,7 +35,9 @@ A JSON array or JSONL file with one object per conversation:
 
 ## Explore the results
 
-The dashboard has four views: an overview of leading needs, searchable pattern cards, a map of related groups, and a conversation explorer. Import saved JSONL files in the browser or let the local server read the `checkpoints` directory. The import dialog also accepts a JSON object with `conversations`, `summaries`, `clusters`, `meta_clusters`, and `dimensionality` arrays. The built-in preview dataset lets you inspect the interface without running analysis.
+The dashboard has five views: an overview of leading needs, searchable pattern cards, a hierarchy tree, a map of related groups, and a conversation explorer. Import saved JSONL files in the browser or let the local server read the `checkpoints` directory. The import dialog also accepts a JSON object with `conversations`, `summaries`, `clusters`, `meta_clusters`, and `dimensionality` arrays.
+
+To see a clear example immediately, choose **Import data → Explore 120-chat demo**. This illustrative demo uses predefined groups: 24 base patterns, three Level 2 themes, and one Level 3 theme. It makes no model calls. The matching raw conversations are in `examples/hierarchy-conversations.jsonl`; run the CLI on that file to discover groups with the selected models. The six-conversation `examples/conversations.json` remains a minimal input example.
 
 ## Options
 

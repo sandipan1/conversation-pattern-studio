@@ -24,7 +24,7 @@ function renderOverview() {
   const grouped = new Set(clusters.flatMap(item => item.chat_ids || [])).size;
   const depth = Math.max(0, ...allClusters().map(item => item.level || 0));
   const bars = clusters.slice(0, 5).map(item => `<button class="bar-row" data-cluster="${escapeHTML(item.id)}"><span class="truncate">${escapeHTML(item.name)}</span><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width:${Math.max(4,100*clusterCount(item)/(clusterCount(largest)||1))}%"></span></span><b>${count(clusterCount(item))}</b></button>`).join('');
-  return `<div class="hero"><div><span class="eyebrow">ANALYSIS OVERVIEW</span><h1>Explore what people ask for.</h1><p>See which requests recur, inspect individual chats, and move between levels of the theme map.</p></div>${button('Explore patterns', 'patterns')}</div>
+  return `<div class="hero"><div><span class="eyebrow">ANALYSIS OVERVIEW</span><h1>Explore what people ask for.</h1><p>See which requests recur, inspect individual chats, and trace how patterns become broader themes.</p></div>${button('Explore hierarchy', 'hierarchy')}</div>
   <div class="metrics"><div class="metric"><small>Conversations</small><strong>${count(total)}</strong></div><div class="metric"><small>Base patterns</small><strong>${count(clusters.length)}</strong></div><div class="metric"><small>Grouped coverage</small><strong>${total ? Math.round(100*grouped/total) : 0}%</strong></div><div class="metric"><small>Theme levels</small><strong>${depth+1}</strong></div></div>
   <section class="panel group-panel"><h3>Largest conversation groups</h3><p class="group-caption">Each bar compares the number of conversations in a base pattern. Select a group to read its details.</p>${bars || '<p class="muted">No groups yet.</p>'}</section>
   <div class="section-head"><h2>Patterns worth exploring</h2><button data-action="patterns">View all ↗</button></div><div class="card-grid">${clusters.slice(0,6).map(card).join('')}</div>`;
@@ -34,6 +34,27 @@ function renderPatterns() {
   const filtered = all.filter(item => (state.level === 'all' || String(item.level||0) === state.level) && `${item.name} ${item.description}`.toLowerCase().includes(state.search.toLowerCase()));
   const levels = [...new Set(all.map(item => item.level || 0))].sort((a,b)=>a-b);
   return `${pageIntro('PATTERN LIBRARY', 'Recurring needs, clearly grouped.', 'Search across themes and open any pattern to see the conversations behind it.')}${!hasData() ? empty('No patterns yet', 'Import an analysis to browse its themes.') : `<div class="toolbar"><input id="pattern-search" class="search" type="search" placeholder="Search patterns..." value="${escapeHTML(state.search)}" aria-label="Search patterns"/><select id="level-filter" class="select" aria-label="Filter by level"><option value="all">All levels</option>${levels.map(level => `<option value="${level}" ${state.level===String(level)?'selected':''}>${level===0?'Base patterns':`Level ${level+1} themes`}</option>`).join('')}</select><span class="muted">${filtered.length} results</span></div>${filtered.length ? `<div class="card-grid">${filtered.map(card).join('')}</div>` : empty('No matching patterns', 'Try a different search or level.')}`}`;
+}
+function renderHierarchy() {
+  const all = allClusters();
+  if (!all.length) return `${pageIntro('HIERARCHY', 'See how patterns roll up.', 'Follow individual needs into broader themes.')}${empty('No hierarchy yet', 'Import an analysis or open the illustrative demo.')}`;
+  const byId = new Map(all.map(item => [item.id, item]));
+  const children = new Map();
+  for (const item of all) {
+    if (item.parent_id && byId.has(item.parent_id)) {
+      if (!children.has(item.parent_id)) children.set(item.parent_id, []);
+      children.get(item.parent_id).push(item);
+    }
+  }
+  const roots = all.filter(item => !item.parent_id || !byId.has(item.parent_id));
+  const renderNode = item => {
+    const level = item.level || 0;
+    const label = level ? `LEVEL ${level + 1} THEME` : 'BASE PATTERN';
+    const descendants = (children.get(item.id) || []).sort((a, b) => clusterCount(b) - clusterCount(a) || a.name.localeCompare(b.name));
+    return `<div class="tree-node"><button class="tree-row" data-cluster="${escapeHTML(item.id)}"><span class="tree-mark" aria-hidden="true">${level ? '◆' : '●'}</span><span class="tree-main"><small>${label}</small><strong>${escapeHTML(item.name)}</strong></span><span class="tree-count">${count(clusterCount(item))} chats</span><span class="tree-arrow" aria-hidden="true">↗</span></button>${descendants.length ? `<div class="tree-children">${descendants.map(renderNode).join('')}</div>` : ''}</div>`;
+  };
+  const demoNote = state.source.startsWith('Illustrative demo') ? '<p class="demo-note">This demo uses predefined groups to show the hierarchy clearly. Run the CLI on the raw example file to discover groups from its conversations.</p>' : '';
+  return `${pageIntro('HIERARCHY', 'See how patterns roll up.', 'Follow each branch from a broad theme to the conversation groups beneath it. Select any row to inspect its chats.')}${demoNote}<div class="tree-legend"><span>◆ Broader theme</span><span>● Base pattern</span><span>${all.length} groups across ${new Set(all.map(item => item.level || 0)).size} levels</span></div><div class="tree-root">${roots.sort((a, b) => clusterCount(b) - clusterCount(a)).map(renderNode).join('')}</div>`;
 }
 function mapPosition(value, min, max, padding) { return min === max ? 50 : padding + (100 - 2 * padding) * (value-min)/(max-min); }
 function renderMap() {
@@ -58,7 +79,7 @@ function render() {
   $('#view-name').textContent=state.view[0].toUpperCase()+state.view.slice(1);
   $('#record-count').textContent=`${count(state.data.conversations.length)} conversations`;
   $('#dataset-label').textContent=state.source;
-  $('#app-content').innerHTML=({overview:renderOverview,patterns:renderPatterns,map:renderMap,conversations:renderConversations})[state.view]();
+  $('#app-content').innerHTML=({overview:renderOverview,patterns:renderPatterns,hierarchy:renderHierarchy,map:renderMap,conversations:renderConversations})[state.view]();
 }
 function openCluster(id) {
   const item=allClusters().find(cluster=>cluster.id===id); if(!item)return;
@@ -76,13 +97,13 @@ function openConversation(id) {
   $('#detail-body').innerHTML=`<p class="detail-description">${escapeHTML(summary?.request||'Original messages')}</p><div class="detail-meta"><span>${escapeHTML(id)}</span><span>${item.messages?.length||0} messages</span></div><div class="detail-section"><h3>Transcript</h3>${(item.messages||[]).map(message=>`<div class="message ${message.role==='user'?'user':'assistant'}"><b>${escapeHTML(message.role)}</b>${escapeHTML(message.content)}</div>`).join('')}</div>`;
   $('#detail-dialog').showModal();
 }
-function previewData() {
-  const names=['Troubleshoot login issues','Find billing information','Request account exports','Understand API limits','Configure team permissions','Improve search results'];
-  const conversations=Array.from({length:24},(_,i)=>({chat_id:`sample-${i+1}`,messages:[{role:'user',content:`Can you help me with ${names[i%names.length].toLowerCase()}?`},{role:'assistant',content:`Here is a way to address ${names[i%names.length].toLowerCase()}.`}],metadata:{channel:i%2?'web':'support'}}));
-  const summaries=conversations.map((item,i)=>({chat_id:item.chat_id,summary:`The user asked for help with ${names[i%names.length].toLowerCase()}.`,request:names[i%names.length],metadata:item.metadata}));
-  const clusters=names.map((name,i)=>({id:`sample-cluster-${i}`,name,description:`Conversations about ${name.toLowerCase()} and the steps users need to take.`,slug:name.toLowerCase().replaceAll(' ','_'),chat_ids:conversations.filter((_,j)=>j%names.length===i).map(item=>item.chat_id),parent_id:`sample-parent-${Math.floor(i/3)}`,level:0,x_coord:Math.cos(i*1.05)*10,y_coord:Math.sin(i*1.05)*10}));
-  const meta_clusters=[{id:'sample-parent-0',name:'Resolve access and account questions',description:'Requests about signing in, payments, and data access.',chat_ids:clusters.slice(0,3).flatMap(item=>item.chat_ids),parent_id:null,level:1,x_coord:-5,y_coord:1},{id:'sample-parent-1',name:'Improve product setup and discovery',description:'Requests about API usage, permissions, and search.',chat_ids:clusters.slice(3).flatMap(item=>item.chat_ids),parent_id:null,level:1,x_coord:5,y_coord:1}];
-  state.data={conversations,summaries,clusters,meta_clusters,dimensionality:[...clusters,...meta_clusters]}; state.source='Preview dataset'; state.view='overview'; state.search=''; state.level='all'; render();
+async function previewData() {
+  const response = await fetch('/demo-analysis.json');
+  if (!response.ok) throw new Error('Could not load the demo analysis.');
+  const data = await response.json();
+  state.data = Object.fromEntries(stages.map(key => [key, data[key] || []]));
+  state.source = 'Illustrative demo · predefined groups';
+  state.view = 'hierarchy'; state.search = ''; state.level = 'all'; render();
 }
 async function importFiles(files) {
   const next={...state.data};
@@ -108,7 +129,7 @@ document.addEventListener('click',event=>{
 document.addEventListener('input',event=>{if(event.target.id==='pattern-search'||event.target.id==='conversation-search'){state.search=event.target.value;const position=event.target.selectionStart;render();const selector=event.target.id==='pattern-search'?'#pattern-search':'#conversation-search';$(selector)?.focus();$(selector)?.setSelectionRange(position,position);}});
 document.addEventListener('change',event=>{if(event.target.id==='level-filter'||event.target.id==='map-level'){state.level=event.target.value;render();}});
 $('#import-top').onclick=$('#import-sidebar').onclick=()=>$('#import-dialog').showModal();
-$('#sample-button').onclick=()=>{$('#import-dialog').close();previewData()};
+$('#sample-button').onclick=async()=>{try{await previewData();$('#import-dialog').close()}catch(error){$('#import-status').textContent=error.message;$('#import-status').classList.add('error')}};
 $('#file-input').onchange=event=>importFiles([...event.target.files]);
 const dropzone=$('#dropzone');
 dropzone.addEventListener('dragover',event=>{event.preventDefault();dropzone.classList.add('drag')});

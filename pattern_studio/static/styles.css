@@ -475,6 +475,97 @@ button {
   max-width:440px;
   margin:10px auto 20px
 }
+.tree-legend {
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px 22px;
+  color:#75838d;
+  font-size:11px;
+  font-weight:700;
+  margin-bottom:18px
+}
+.demo-note {
+  background:#e7eee9;
+  border:1px solid #d8e3dd;
+  border-radius:10px;
+  color:#395d52;
+  font-size:12px;
+  line-height:1.6;
+  margin:0 0 18px;
+  padding:12px 15px
+}
+.tree-root {
+  display:grid;
+  gap:18px
+}
+.tree-node {
+  min-width:0
+}
+.tree-row {
+  display:flex;
+  align-items:center;
+  gap:15px;
+  width:100%;
+  padding:16px 19px;
+  border:1px solid #e7e5de;
+  border-radius:12px;
+  background:#fff;
+  color:#172436;
+  text-align:left
+}
+.tree-row:hover,.tree-row:focus-visible {
+  border-color:#9db7a8;
+  background:#f0f5ef
+}
+.tree-mark {
+  color:#d57056;
+  font-size:16px
+}
+.tree-main {
+  display:grid;
+  gap:4px;
+  min-width:0;
+  margin-right:auto
+}
+.tree-main small {
+  color:#8a969c;
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:1.2px
+}
+.tree-main strong {
+  overflow:hidden;
+  text-overflow:ellipsis;
+  font:800 13px Manrope;
+  white-space:nowrap
+}
+.tree-count {
+  color:#6d7f89;
+  font-size:11px;
+  font-weight:700;
+  white-space:nowrap
+}
+.tree-arrow {
+  color:#d57056
+}
+.tree-children {
+  display:grid;
+  gap:8px;
+  border-left:2px solid #cbd8d2;
+  margin:8px 0 0 21px;
+  padding-left:20px
+}
+.tree-children > .tree-node {
+  position:relative
+}
+.tree-children > .tree-node:before {
+  content:'';
+  position:absolute;
+  width:20px;
+  border-top:2px solid #cbd8d2;
+  left:-20px;
+  top:28px
+}
 .map-wrap {
   display:grid;
   grid-template-columns:minmax(0,1fr) 280px;
@@ -822,6 +913,18 @@ button {
   }
   .metric strong {
     font-size:24px
+  }
+  .tree-row {
+    padding:12px;
+    gap:8px
+  }
+  .tree-children {
+    margin-left:10px;
+    padding-left:12px
+  }
+  .tree-children > .tree-node:before {
+    left:-12px;
+    width:12px
   }
 }
 @media(max-width:700px) {

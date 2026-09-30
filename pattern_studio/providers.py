@@ -187,7 +187,13 @@ class HashingEmbedder:
     def __init__(self):
         from sklearn.feature_extraction.text import HashingVectorizer
 
-        self.vectorizer = HashingVectorizer(n_features=512, alternate_sign=False, norm="l2")
+        self.vectorizer = HashingVectorizer(
+            n_features=2048,
+            stop_words="english",
+            ngram_range=(1, 2),
+            alternate_sign=False,
+            norm="l2",
+        )
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         return self.vectorizer.transform(texts).toarray().tolist()
@@ -202,16 +208,22 @@ class RuleBasedTextModel:
         return SummaryPayload(summary=excerpt or "Empty conversation", request=excerpt, task=excerpt, languages=["english"])
 
     async def label(self, examples: list[str], others: list[str]) -> LabelPayload:
-        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
 
         if not examples:
             return LabelPayload(name="Uncategorized", description="No examples available")
         try:
-            vectorizer = TfidfVectorizer(stop_words="english", max_features=100)
-            matrix = vectorizer.fit_transform(examples)
-            ranks = matrix.mean(axis=0).A1.argsort()[::-1]
+            phrases = [item.split(":", 1)[0] for item in examples]
+            contrasts = [item.split(":", 1)[0] for item in others]
+            generic = {"conversation", "conversations", "related", "summary", "summaries", "group", "groups", "request", "requests", "need", "trying", "quickest", "help", "walk", "workspace"}
+            vectorizer = TfidfVectorizer(stop_words=list(ENGLISH_STOP_WORDS | generic), max_features=200)
+            matrix = vectorizer.fit_transform([*phrases, *contrasts])
+            ranks = matrix[:len(phrases)].mean(axis=0).A1
+            if contrasts:
+                ranks -= 0.4 * matrix[len(phrases):].mean(axis=0).A1
+            ranks = ranks.argsort()[::-1]
             words = vectorizer.get_feature_names_out()
             name = " ".join(words[i] for i in ranks[:3]).title()
         except ValueError:
             name = "Other requests"
-        return LabelPayload(name=name or "Other requests", description=f"{len(examples)} related conversation summaries")
+        return LabelPayload(name=name or "Other requests", description=f"Related requests about {name.lower()}.")
