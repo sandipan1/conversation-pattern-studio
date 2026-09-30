@@ -305,11 +305,6 @@ button {
   font-weight:800;
   font-size:12px
 }
-.overview-grid {
-  display:grid;
-  grid-template-columns:1.18fr .82fr;
-  gap:18px
-}
 .panel {
   background:#fff;
   border:1px solid #e7e5de;
@@ -320,15 +315,31 @@ button {
   font:800 13px Manrope;
   margin:0 0 18px
 }
+.group-caption {
+  color:#72818b;
+  font-size:12px;
+  line-height:1.6;
+  margin:-8px 0 14px
+}
 .bar-row {
   display:grid;
-  grid-template-columns:minmax(100px,1fr) 1.4fr 37px;
+  grid-template-columns:minmax(140px,1fr) 1.4fr 48px;
   align-items:center;
   gap:13px;
-  padding:10px 0;
+  width:100%;
+  padding:12px 9px;
+  border:0;
   border-bottom:1px solid #f0eee9;
+  background:transparent;
+  color:inherit;
+  text-align:left;
+  border-radius:6px;
   font-size:12px;
   font-weight:700
+}
+.bar-row:hover,.bar-row:focus-visible {
+  background:#f7f5ef;
+  outline-color:#172436
 }
 .bar-row:last-child {
   border:0
@@ -339,12 +350,14 @@ button {
   white-space:nowrap
 }
 .bar-track {
+  display:block;
   height:8px;
   background:#eef0ed;
   border-radius:99px;
   overflow:hidden
 }
 .bar-fill {
+  display:block;
   height:100%;
   background:#e88369;
   border-radius:99px
@@ -352,37 +365,6 @@ button {
 .bar-row b {
   text-align:right;
   color:#637481
-}
-.insight {
-  background:#172436;
-  border-color:#172436;
-  color:#f6f3eb
-}
-.insight .small-line {
-  color:#e98871;
-  text-transform:uppercase;
-  font-size:10px;
-  font-weight:800;
-  letter-spacing:1.5px
-}
-.insight h3 {
-  font:800 21px/1.35 Manrope;
-  margin:17px 0 12px
-}
-.insight p {
-  font-size:12px;
-  color:#b7c5cb;
-  line-height:1.7
-}
-.insight button {
-  border:1px solid #748392;
-  border-radius:7px;
-  background:transparent;
-  color:#fff;
-  padding:9px 12px;
-  font-weight:700;
-  font-size:11px;
-  margin-top:10px
 }
 .card-grid {
   display:grid;
@@ -776,9 +758,6 @@ button {
   }
   .metrics {
     grid-template-columns:repeat(2,1fr)
-  }
-  .overview-grid {
-    grid-template-columns:1fr
   }
   .map-wrap {
     grid-template-columns:1fr
