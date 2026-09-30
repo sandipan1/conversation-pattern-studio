@@ -2,6 +2,16 @@
 
 A local workspace for finding recurring needs in chat data. It summarizes conversations, groups related requests, names the groups, builds higher-level themes, and gives you a dashboard to explore the results.
 
+## Screenshots
+
+**Overview**
+
+![Conversation Pattern Studio overview dashboard](assets/dashboard-overview.png)
+
+**Hierarchy**
+
+![Conversation Pattern Studio theme hierarchy](assets/pattern-hierarchy.png)
+
 ## Try it
 
 Requirements: Python 3.10+ and [uv](https://docs.astral.sh/uv/).
