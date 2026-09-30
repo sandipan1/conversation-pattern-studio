@@ -1,8 +1,13 @@
 # Conversation Pattern Studio
 
-A local workspace for finding recurring needs in chat data. It summarizes conversations, groups related requests, names the groups, builds higher-level themes, and gives you a dashboard to explore the results.
+**Find the needs and recurring problems hidden in your chat history.**
 
-## Screenshots
+Conversation Pattern Studio summarizes conversations, groups chats by meaning, and connects recurring patterns to broader themes. Product and support teams can use it to see what people ask for, where they get stuck, and which opportunities appear across many conversations.
+
+- **User needs:** Find recurring requests and tasks people bring to an assistant.
+- **Friction points:** Surface repeated confusion, unmet requests, and assistant errors.
+- **Improvement opportunities:** See which themes recur across many conversations.
+- **Semantic grouping:** Connect similar conversations even when they use different words.
 
 **Overview**
 
