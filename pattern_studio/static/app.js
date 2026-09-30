@@ -47,6 +47,7 @@ function renderHierarchy() {
     }
   }
   const roots = all.filter(item => !item.parent_id || !byId.has(item.parent_id));
+  const shallow = roots.length === 1 && (roots[0].level || 0) === 1 && (children.get(roots[0].id) || []).length > 1;
   const renderNode = item => {
     const level = item.level || 0;
     const label = level ? `LEVEL ${level + 1} THEME` : 'BASE PATTERN';
@@ -54,7 +55,8 @@ function renderHierarchy() {
     return `<div class="tree-node"><button class="tree-row" data-cluster="${escapeHTML(item.id)}"><span class="tree-mark" aria-hidden="true">${level ? '◆' : '●'}</span><span class="tree-main"><small>${label}</small><strong>${escapeHTML(item.name)}</strong></span><span class="tree-count">${count(clusterCount(item))} chats</span><span class="tree-arrow" aria-hidden="true">↗</span></button>${descendants.length ? `<div class="tree-children">${descendants.map(renderNode).join('')}</div>` : ''}</div>`;
   };
   const demoNote = state.source.startsWith('Illustrative demo') ? '<p class="demo-note">This demo uses predefined groups to show the hierarchy clearly. Run the CLI on the raw example file to discover groups from its conversations.</p>' : '';
-  return `${pageIntro('HIERARCHY', 'See how patterns roll up.', 'Follow each branch from a broad theme to the conversation groups beneath it. Select any row to inspect its chats.')}${demoNote}<div class="tree-legend"><span>◆ Broader theme</span><span>● Base pattern</span><span>${all.length} groups across ${new Set(all.map(item => item.level || 0)).size} levels</span></div><div class="tree-root">${roots.sort((a, b) => clusterCount(b) - clusterCount(a)).map(renderNode).join('')}</div>`;
+  const shallowNote = shallow ? '<p class="demo-note">Every base pattern rolled into one broad theme, so there is no useful middle level to explore. Try more base patterns when you run the CLI; use <code>--clusters 24</code> for the included 120-chat example.</p>' : '';
+  return `${pageIntro('HIERARCHY', 'See how patterns roll up.', 'Follow each branch from a broad theme to the conversation groups beneath it. Select any row to inspect its chats.')}${demoNote}${shallowNote}<div class="tree-legend"><span>◆ Broader theme</span><span>● Base pattern</span><span>${all.length} groups across ${new Set(all.map(item => item.level || 0)).size} levels</span></div><div class="tree-root">${roots.sort((a, b) => clusterCount(b) - clusterCount(a)).map(renderNode).join('')}</div>`;
 }
 function mapPosition(value, min, max, padding) { return min === max ? 50 : padding + (100 - 2 * padding) * (value-min)/(max-min); }
 function renderMap() {

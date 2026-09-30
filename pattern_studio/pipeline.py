@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -18,6 +19,13 @@ from sklearn.decomposition import PCA
 from .models import Cluster, Conversation, Summary, SummaryPayload
 from .providers import Embedder, TextModel
 from .storage import CheckpointStore
+
+ProgressCallback = Callable[[str, int, int], None]
+
+
+def _report(callback: ProgressCallback | None, stage: str, completed: int, total: int) -> None:
+    if callback is not None:
+        callback(stage, completed, total)
 
 
 class PipelineConfig(BaseModel):
@@ -72,75 +80,110 @@ def _group(vectors: list[list[float]], count: int, method: str) -> list[int]:
 
 
 def _automatic_cluster_count(size: int) -> int:
-    return min(size, max(1, round(math.sqrt(size / 2))))
+    # Aim for several parent themes without making tiny datasets mostly singletons.
+    return min(size, max(1, min(size // 3, round(2 * math.sqrt(size)))))
 
 
 async def summarize_conversations(
-    conversations: list[Conversation], model: TextModel, *, concurrency: int = 10
+    conversations: list[Conversation], model: TextModel, *, concurrency: int = 10,
+    on_progress: ProgressCallback | None = None,
 ) -> list[Summary]:
     semaphore = asyncio.Semaphore(concurrency)
+    completed = 0
+    stage = "Summarizing conversations"
+    _report(on_progress, stage, 0, len(conversations))
 
     async def one(conversation: Conversation) -> Summary:
+        nonlocal completed
         async with semaphore:
             generated = await model.summarize(conversation)
             fields = generated.model_dump()
             known = set(SummaryPayload.model_fields)
             custom = {key: fields.pop(key) for key in list(fields) if key not in known}
-            return Summary(chat_id=conversation.chat_id, metadata={**conversation.metadata, **custom}, **fields)
+            summary = Summary(chat_id=conversation.chat_id, metadata={**conversation.metadata, **custom}, **fields)
+            completed += 1
+            _report(on_progress, stage, completed, len(conversations))
+            return summary
 
     return list(await asyncio.gather(*(one(item) for item in conversations)))
 
 
-async def embed_summaries(summaries: list[Summary], embedder: Embedder, *, batch_size: int = 100) -> list[Summary]:
+async def embed_summaries(
+    summaries: list[Summary], embedder: Embedder, *, batch_size: int = 100,
+    concurrency: int = 4, on_progress: ProgressCallback | None = None,
+) -> list[Summary]:
     missing = [item for item in summaries if item.embedding is None]
-    for offset in range(0, len(missing), batch_size):
+    completed = 0
+    stage = "Embedding requests"
+    _report(on_progress, stage, 0, len(missing))
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def one_batch(offset: int) -> None:
+        nonlocal completed
         batch = missing[offset : offset + batch_size]
-        vectors = await embedder.embed([item.request or item.summary for item in batch])
+        async with semaphore:
+            vectors = await embedder.embed([item.request or item.summary for item in batch])
         if len(vectors) != len(batch):
             raise ValueError("Embedding model returned a different number of vectors")
         for item, vector in zip(batch, vectors):
             item.embedding = vector
+        completed += len(batch)
+        _report(on_progress, stage, completed, len(missing))
+
+    await asyncio.gather(*(one_batch(offset) for offset in range(0, len(missing), batch_size)))
     return summaries
 
 
 async def _label_groups(
-    groups: list[list[Summary]], model: TextModel, concurrency: int, level: int
+    groups: list[list[Summary]], model: TextModel, concurrency: int, level: int,
+    on_progress: ProgressCallback | None = None,
 ) -> list[Cluster]:
     semaphore = asyncio.Semaphore(concurrency)
+    completed = 0
+    stage = "Naming base patterns"
+    _report(on_progress, stage, 0, len(groups))
 
     async def one(index: int, members: list[Summary]) -> Cluster:
+        nonlocal completed
         other = [item.summary for j, group in enumerate(groups) if j != index for item in group[:2]][:10]
         async with semaphore:
             label = await model.label([item.summary for item in members[:20]], other)
-        return Cluster(
+        cluster = Cluster(
             name=label.name,
             description=label.description,
             slug=_slug(label.name),
             chat_ids=[item.chat_id for item in members],
             level=level,
         )
+        completed += 1
+        _report(on_progress, stage, completed, len(groups))
+        return cluster
 
     return list(await asyncio.gather(*(one(i, group) for i, group in enumerate(groups))))
 
 
 async def cluster_summaries(
-    summaries: list[Summary], model: TextModel, config: PipelineConfig
+    summaries: list[Summary], model: TextModel, config: PipelineConfig,
+    on_progress: ProgressCallback | None = None,
 ) -> list[Cluster]:
     if not summaries:
         return []
     if any(item.embedding is None for item in summaries):
         raise ValueError("Summaries must have embeddings before clustering")
+    _report(on_progress, "Grouping conversations", 0, 1)
     labels = _group(
         [item.embedding for item in summaries if item.embedding is not None],
         config.cluster_count or _automatic_cluster_count(len(summaries)),
         config.clustering,
     )
+    _report(on_progress, "Grouping conversations", 1, 1)
     groups = [[item for item, label in zip(summaries, labels) if label == group] for group in sorted(set(labels))]
-    return await _label_groups(groups, model, config.concurrency, level=0)
+    return await _label_groups(groups, model, config.concurrency, level=0, on_progress=on_progress)
 
 
 async def build_hierarchy(
-    base_clusters: list[Cluster], model: TextModel, embedder: Embedder, config: PipelineConfig
+    base_clusters: list[Cluster], model: TextModel, embedder: Embedder, config: PipelineConfig,
+    on_progress: ProgressCallback | None = None,
 ) -> list[Cluster]:
     if config.max_depth == 0 or len(base_clusters) <= 1:
         return []
@@ -149,13 +192,25 @@ async def build_hierarchy(
     for level in range(1, config.max_depth + 1):
         if len(current) <= 1:
             break
+        stage = f"Embedding level {level + 1} themes"
+        _report(on_progress, stage, 0, 1)
         vectors = await embedder.embed([f"{item.name}. {item.description}" for item in current])
+        _report(on_progress, stage, 1, 1)
         group_count = math.ceil(len(current) / config.children_per_parent)
         labels = _group(vectors, group_count, "kmeans")
         groups = [[item for item, label in zip(current, labels) if label == group] for group in sorted(set(labels))]
         semaphore = asyncio.Semaphore(config.concurrency)
+        completed = 0
+        label_stage = f"Naming level {level + 1} themes"
+        group_total = len(groups)
+        _report(on_progress, label_stage, 0, group_total)
 
-        async def make_parent(index: int, members: list[Cluster], group_collection=groups, limiter=semaphore, depth=level) -> Cluster:
+        async def make_parent(
+            index: int, members: list[Cluster], group_collection=groups,
+            limiter=semaphore, depth=level, stage_name=label_stage,
+            total_groups=group_total,
+        ) -> Cluster:
+            nonlocal completed
             contrast = [item.name for j, group in enumerate(group_collection) if j != index for item in group][:10]
             async with limiter:
                 label = await model.label([f"{item.name}: {item.description}" for item in members], contrast)
@@ -163,6 +218,8 @@ async def build_hierarchy(
             parent = Cluster(name=label.name, description=label.description, slug=_slug(label.name), chat_ids=chat_ids, level=depth)
             for child in members:
                 child.parent_id = parent.id
+            completed += 1
+            _report(on_progress, stage_name, completed, total_groups)
             return parent
 
         current = list(await asyncio.gather(*(make_parent(i, group) for i, group in enumerate(groups))))
@@ -209,19 +266,35 @@ async def analyze(
     config: PipelineConfig | None = None,
     checkpoints: CheckpointStore | None = None,
     resume: bool = True,
+    on_progress: ProgressCallback | None = None,
 ) -> AnalysisResult:
     """Run the complete analysis. Checkpoints resume only when inputs and config match."""
     config = config or PipelineConfig()
     ids = [item.chat_id for item in conversations]
     if len(ids) != len(set(ids)):
         raise ValueError("Conversation chat_id values must be unique")
-    fingerprint = hashlib.sha256(json.dumps({
+    signature = {
         "input": [item.model_dump(mode="json") for item in conversations],
-        "config": config.model_dump(),
         "text_model": getattr(text_model, "identity", getattr(text_model, "model", type(text_model).__name__)),
         "embedder": getattr(embedder, "model", type(embedder).__name__),
-    }, sort_keys=True, default=str).encode()).hexdigest()
-    valid = bool(resume and checkpoints and checkpoints.read("manifest") == [{"fingerprint": fingerprint}])
+    }
+
+    def fingerprint_for(settings: dict) -> str:
+        payload = {**signature, "config": settings}
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+    settings = config.model_dump()
+    fingerprint = fingerprint_for({key: value for key, value in settings.items() if key != "concurrency"})
+    legacy_fingerprints = {fingerprint_for(settings)}
+    if config.concurrency != 10:
+        legacy_fingerprints.add(fingerprint_for({**settings, "concurrency": 10}))
+    manifest = checkpoints.read("manifest") if resume and checkpoints else None
+    saved_fingerprint = (
+        manifest[0].get("fingerprint")
+        if isinstance(manifest, list) and len(manifest) == 1 and isinstance(manifest[0], dict)
+        else None
+    )
+    valid = bool(resume and checkpoints and saved_fingerprint in {fingerprint, *legacy_fingerprints})
 
     def load(stage: str, record_type: type):
         records = checkpoints.read(stage) if valid and checkpoints else None
@@ -236,30 +309,44 @@ async def analyze(
 
     summaries = load("summaries", Summary)
     if summaries is None:
-        summaries = await summarize_conversations(conversations, text_model, concurrency=config.concurrency)
-        await embed_summaries(summaries, embedder)
+        summaries = await summarize_conversations(
+            conversations, text_model, concurrency=config.concurrency, on_progress=on_progress,
+        )
+        await embed_summaries(summaries, embedder, concurrency=config.concurrency, on_progress=on_progress)
         save("summaries", summaries)
-    elif any(item.embedding is None for item in summaries):
-        await embed_summaries(summaries, embedder)
-        save("summaries", summaries)
+    else:
+        _report(on_progress, "Reused saved summaries", 1, 1)
+        if any(item.embedding is None for item in summaries):
+            await embed_summaries(summaries, embedder, concurrency=config.concurrency, on_progress=on_progress)
+            save("summaries", summaries)
+        else:
+            _report(on_progress, "Reused saved embeddings", 1, 1)
 
     base_clusters = load("clusters", Cluster)
     if base_clusters is None:
-        base_clusters = await cluster_summaries(summaries, text_model, config)
+        base_clusters = await cluster_summaries(summaries, text_model, config, on_progress=on_progress)
         save("clusters", base_clusters)
+    else:
+        _report(on_progress, "Reused saved base patterns", 1, 1)
 
     meta_clusters = load("meta_clusters", Cluster)
     if meta_clusters is None:
-        meta_clusters = await build_hierarchy(base_clusters, text_model, embedder, config)
+        meta_clusters = await build_hierarchy(base_clusters, text_model, embedder, config, on_progress=on_progress)
         save("clusters", base_clusters)  # parent links are assigned during hierarchy construction
         save("meta_clusters", meta_clusters)
+    else:
+        _report(on_progress, "Reused saved higher themes", 1, 1)
 
     projected = load("dimensionality", Cluster)
     if projected is None:
+        _report(on_progress, "Placing patterns on map", 0, 1)
         all_clusters = base_clusters + meta_clusters
         vectors = await embedder.embed([f"{item.name}. {item.description}" for item in all_clusters])
         projected = project_clusters(all_clusters, vectors, config.projection)
+        _report(on_progress, "Placing patterns on map", 1, 1)
         save("dimensionality", projected)
-    if checkpoints and not valid:
+    else:
+        _report(on_progress, "Reused saved map", 1, 1)
+    if checkpoints and (not valid or saved_fingerprint != fingerprint):
         checkpoints.write("manifest", [{"fingerprint": fingerprint}])
     return AnalysisResult(conversations, summaries, base_clusters, meta_clusters, projected)

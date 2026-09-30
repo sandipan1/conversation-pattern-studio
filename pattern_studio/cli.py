@@ -4,10 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from pathlib import Path
 from typing import Annotated
 
 import typer
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from .models import Conversation
 from .pipeline import PipelineConfig, analyze
@@ -30,7 +40,8 @@ app = typer.Typer(help="Find and explore patterns in conversation data.", no_arg
 @app.command()
 def run(
     input_file: Annotated[Path, typer.Argument(help="JSON or JSONL conversation file")],
-    output: Annotated[Path, typer.Option(help="Checkpoint directory or SQLite file")] = Path("checkpoints"),
+    output: Annotated[Path, typer.Option(help="Root directory for run-specific checkpoints")] = Path("checkpoints"),
+    run_name: Annotated[str | None, typer.Option(help="Checkpoint folder name; defaults to the input filename")]=None,
     input_format: Annotated[str, typer.Option(help="standard or claude")] = "standard",
     checkpoint_format: Annotated[str, typer.Option(help="jsonl, sqlite, sql, parquet, or huggingface")] = "jsonl",
     database_url: Annotated[str | None, typer.Option(help="SQLAlchemy URL when using --checkpoint-format sql")] = None,
@@ -41,21 +52,33 @@ def run(
     clustering: Annotated[str, typer.Option(help="kmeans or hdbscan")] = "kmeans",
     clusters: Annotated[int | None, typer.Option(help="Number of base groups; automatic by default")] = None,
     max_depth: Annotated[int, typer.Option(help="Maximum hierarchy depth")] = 2,
+    concurrency: Annotated[int, typer.Option(help="Parallel model requests; increase if your provider allows it")] = 10,
     resume: Annotated[bool, typer.Option(help="Resume compatible checkpoints")] = True,
 ) -> None:
     """Analyze conversations and save every stage for the dashboard."""
     load_environment()
     if input_format not in {"standard", "claude"}:
         raise typer.BadParameter("input-format must be standard or claude")
+    if concurrency < 1:
+        raise typer.BadParameter("concurrency must be at least 1")
     if not offline and not os.getenv("OPENAI_API_KEY"):
         raise typer.BadParameter("Set OPENAI_API_KEY in .env or the environment, or use --offline for a preview")
-    conversations = Conversation.from_claude_export(input_file) if input_format == "claude" else Conversation.from_file(input_file)
+    conversations = (
+        Conversation.from_claude_export(input_file)
+        if input_format == "claude"
+        else Conversation.from_file(input_file)
+    )
+    default_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", input_file.stem).strip("-_").lower() or "run"
+    name = re.sub(r"[^a-zA-Z0-9_-]+", "-", run_name or default_name).strip("-_").lower()
+    if not name:
+        raise typer.BadParameter("--run-name must contain at least one letter or number")
+    run_directory = output / name
     stores = {
-        "jsonl": lambda: JSONLStore(output),
-        "sqlite": lambda: SQLiteStore(output),
-        "sql": lambda: SQLStore(database_url or ""),
-        "parquet": lambda: ParquetStore(output),
-        "huggingface": lambda: HuggingFaceStore(output),
+        "jsonl": lambda: JSONLStore(run_directory),
+        "sqlite": lambda: SQLiteStore(run_directory.with_suffix(".sqlite3")),
+        "sql": lambda: SQLStore(database_url or "", run_id=name),
+        "parquet": lambda: ParquetStore(run_directory),
+        "huggingface": lambda: HuggingFaceStore(run_directory),
     }
     if checkpoint_format not in stores:
         raise typer.BadParameter("Unsupported checkpoint format")
@@ -72,19 +95,38 @@ def run(
         embedder = CohereEmbedder(embedding_model if embedding_model != "text-embedding-3-small" else "embed-v4.0")
     else:
         embedder = OpenAIEmbedder(embedding_model)
-    if checkpoint_format == "sqlite" and output == Path("checkpoints"):
-        output = Path("checkpoints.db")
-    result = asyncio.run(analyze(
-        conversations,
-        text_model=text_model,
-        embedder=embedder,
-        config=PipelineConfig(cluster_count=clusters, clustering=clustering, max_depth=max_depth),
-        checkpoints=stores[checkpoint_format](),
-        resume=resume,
-    ))
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=Console(stderr=True),
+        refresh_per_second=5,
+    ) as meter:
+        tasks: dict[str, int] = {}
+
+        def show_progress(stage: str, completed: int, total: int) -> None:
+            if stage not in tasks:
+                tasks[stage] = meter.add_task(stage, total=max(total, 1))
+            meter.update(tasks[stage], completed=completed if total else 1, total=max(total, 1))
+
+        result = asyncio.run(analyze(
+            conversations,
+            text_model=text_model,
+            embedder=embedder,
+            config=PipelineConfig(
+                cluster_count=clusters, clustering=clustering,
+                max_depth=max_depth, concurrency=concurrency,
+            ),
+            checkpoints=stores[checkpoint_format](),
+            resume=resume,
+            on_progress=show_progress,
+        ))
     typer.echo(f"Analyzed {len(result.conversations)} conversations into {len(result.clusters)} base groups and {len(result.meta_clusters)} higher-level groups.")
     if checkpoint_format == "jsonl":
-        typer.echo(f"Open the dashboard with: pattern-studio serve --dir {output}")
+        typer.echo(f"Checkpoints: {run_directory}")
+        typer.echo(f"Open the dashboard with: pattern-studio serve --dir {run_directory}")
 
 
 @app.command()
